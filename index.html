@@ -3,42 +3,113 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>PDF to Speech Reader</title>
+  <title>PDF → AI Voice Reader</title>
   <style>
-    body { font-family: sans-serif; max-width: 600px; margin: 2em auto; line-height: 1.4; }
-    label, select, input, button { margin: 0.5em 0; display: block; }
-    #status { margin: 1em 0; font-weight: bold; }
+    body {
+      font-family: sans-serif;
+      max-width: 700px;
+      margin: 2em auto;
+      line-height: 1.4;
+    }
+    label, select, input, button {
+      margin: 0.5em 0;
+      display: block;
+    }
+    #status {
+      margin: 1em 0;
+      font-weight: bold;
+    }
+    #pdfCanvas {
+      border: 1px solid #ccc;
+      width: 100%;
+      margin: 1em 0;
+    }
+    #controls button {
+      margin-right: 1em;
+    }
   </style>
 </head>
 <body>
   <h1>PDF → AI Voice Reader</h1>
 
+  <!-- file input -->
   <input type="file" id="pdfFileInput" accept="application/pdf">
+
+  <!-- status feedback -->
   <div id="status">No file selected.</div>
 
-  <label for="voiceSelect">Voice:</label>
-  <select id="voiceSelect"></select>
+  <!-- PDF preview canvas -->
+  <canvas id="pdfCanvas"></canvas>
 
+  <!-- voice selection & preview -->
+  <label for="voiceSelect">Voice (US-English only):</label>
+  <select id="voiceSelect"></select>
+  <button id="previewVoiceBtn">▶ Preview Voice</button>
+
+  <!-- speed control -->
   <label for="speedRange">
     Speed: <span id="speedValue">1</span>x
   </label>
   <input type="range" id="speedRange" min="0.5" max="2" step="0.1" value="1">
 
-  <button id="readBtn">Read PDF Aloud</button>
+  <!-- read / control buttons -->
+  <div id="controls">
+    <button id="readBtn">► Read PDF Aloud</button>
+    <button id="pauseBtn" disabled>❚❚ Pause</button>
+    <button id="resumeBtn" disabled>► Resume</button>
+    <button id="stopBtn" disabled>■ Stop</button>
+  </div>
 
-  <!-- PDF.js library -->
+  <!-- PDF.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script>
-    // Tell PDF.js where its worker file lives
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
   </script>
 
-  <!-- Tesseract.js for OCR -->
+  <!-- Tesseract.js -->
   <script src="https://unpkg.com/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
 
   <script>
-    // Wait for voices to load, then populate dropdown
+    // DOM refs
+    const pdfFileInput   = document.getElementById('pdfFileInput');
+    const statusDiv      = document.getElementById('status');
+    const pdfCanvas      = document.getElementById('pdfCanvas');
+    const voiceSelect    = document.getElementById('voiceSelect');
+    const previewVoiceBtn= document.getElementById('previewVoiceBtn');
+    const speedRange     = document.getElementById('speedRange');
+    const speedValue     = document.getElementById('speedValue');
+    const readBtn        = document.getElementById('readBtn');
+    const pauseBtn       = document.getElementById('pauseBtn');
+    const resumeBtn      = document.getElementById('resumeBtn');
+    const stopBtn        = document.getElementById('stopBtn');
+
+    let voices = [];
+    let readingQueue = [];      // array of text chunks
+    let currentChunk = 0;       // index in queue
+    let isReading = false;
+
+    // 1) populate voices (filter to US English + best-known names)
+    function populateVoices() {
+      voices = speechSynthesis.getVoices();
+      // first, try an allowlist of “high-quality” names
+      let filtered = voices.filter(v =>
+        v.lang === 'en-US' &&
+        /Google US English|Samantha|Zira/i.test(v.name)
+      );
+      // fallback to any en-US if none match
+      if (!filtered.length) {
+        filtered = voices.filter(v => v.lang === 'en-US');
+      }
+      voiceSelect.innerHTML = '';
+      filtered.forEach((v, i) => {
+        const opt = document.createElement('option');
+        opt.value = v.name;
+        opt.textContent = `${v.name}`;
+        voiceSelect.appendChild(opt);
+      });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       populateVoices();
       if (speechSynthesis.onvoiceschanged !== undefined) {
@@ -46,30 +117,21 @@
       }
     });
 
-    const pdfFileInput = document.getElementById('pdfFileInput');
-    const statusDiv     = document.getElementById('status');
-    const voiceSelect   = document.getElementById('voiceSelect');
-    const speedRange    = document.getElementById('speedRange');
-    const speedValue    = document.getElementById('speedValue');
-    const readBtn       = document.getElementById('readBtn');
-
-    let voices = [];
-    function populateVoices() {
-      voices = speechSynthesis.getVoices();
-      voiceSelect.innerHTML = '';
-      voices.forEach((v, i) => {
-        const opt = document.createElement('option');
-        opt.value = i;
-        opt.textContent = `${v.name} (${v.lang})`;
-        voiceSelect.appendChild(opt);
-      });
-    }
-
-    // Update displayed speed when slider moves
+    // 2) speed slider live update
     speedRange.addEventListener('input', () => {
       speedValue.textContent = speedRange.value;
     });
 
+    // 3) voice preview
+    previewVoiceBtn.addEventListener('click', () => {
+      speechSynthesis.cancel();
+      const preview = new SpeechSynthesisUtterance('This is a preview of the selected voice.');
+      preview.voice = voices.find(v => v.name === voiceSelect.value);
+      preview.rate  = parseFloat(speedRange.value);
+      speechSynthesis.speak(preview);
+    });
+
+    // 4) main “read PDF” handler
     readBtn.addEventListener('click', async () => {
       const file = pdfFileInput.files[0];
       if (!file) {
@@ -77,37 +139,102 @@
         return;
       }
 
+      // reset any prior reading
+      speechSynthesis.cancel();
+      isReading    = false;
+      readingQueue = [];
+      currentChunk = 0;
+      pauseBtn.disabled = true;
+      resumeBtn.disabled= true;
+      stopBtn.disabled  = true;
+
       statusDiv.textContent = 'Loading PDF…';
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      const numPages = pdf.numPages;
-      let fullText = '';
+      const data = await file.arrayBuffer();
+      const pdf  = await pdfjsLib.getDocument({ data }).promise;
+      const n    = pdf.numPages;
 
-      // Loop through pages, render & OCR each
-      for (let i = 1; i <= numPages; i++) {
-        statusDiv.textContent = `Processing page ${i} of ${numPages}…`;
+      statusDiv.textContent = `Reading ${n} page(s)…`;
+
+      // prepare offscreen canvas for OCR
+      const ocrCanvas = document.createElement('canvas');
+      const ocrCtx    = ocrCanvas.getContext('2d');
+      const dispCtx   = pdfCanvas.getContext('2d');
+
+      for (let i = 1; i <= n; i++) {
+        statusDiv.textContent = `Processing page ${i} of ${n}…`;
         const page = await pdf.getPage(i);
-        const vp = page.getViewport({ scale: 1.5 });
-        const canvas = document.createElement('canvas');
-        canvas.width  = vp.width;
-        canvas.height = vp.height;
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+        const vp   = page.getViewport({ scale: 1.5 });
 
-        const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
-        fullText += text + '\n\n';
+        // size both canvases
+        ocrCanvas.width = dispCtx.canvas.width  = vp.width;
+        ocrCanvas.height= dispCtx.canvas.height = vp.height;
+
+        // render page into both canvases
+        await page.render({ canvasContext: ocrCtx, viewport: vp }).promise;
+        await page.render({ canvasContext: dispCtx, viewport: vp }).promise;
+
+        // run OCR
+        const { data: { text } } = await Tesseract.recognize(ocrCanvas, 'eng');
+        // split into manageable chunks (~500 chars)
+        text.match(/(.|[\r\n]){1,500}(?=\s|$)/g).forEach(chunk => {
+          readingQueue.push(chunk);
+        });
       }
 
-      statusDiv.textContent = 'OCR done — now reading aloud…';
-      speakText(fullText);
+      if (!readingQueue.length) {
+        statusDiv.textContent = '⚠️ No text detected.';
+        return;
+      }
+
+      statusDiv.textContent = 'Starting reading…';
+      isReading = true;
+      pauseBtn.disabled = false;
+      stopBtn.disabled  = false;
+      speakNextChunk();
     });
 
-    function speakText(text) {
-      const utt = new SpeechSynthesisUtterance(text);
-      utt.voice = voices[voiceSelect.value];
+    // 5) speak chunks in sequence
+    function speakNextChunk() {
+      if (!isReading || currentChunk >= readingQueue.length) {
+        statusDiv.textContent = '✅ Finished reading.';
+        isReading = false;
+        pauseBtn.disabled = true;
+        resumeBtn.disabled= true;
+        stopBtn.disabled  = true;
+        return;
+      }
+      const utt = new SpeechSynthesisUtterance(readingQueue[currentChunk]);
+      utt.voice = voices.find(v => v.name === voiceSelect.value);
       utt.rate  = parseFloat(speedRange.value);
-      utt.onend = () => statusDiv.textContent = '✅ Finished reading.';
+      utt.onend = () => {
+        currentChunk++;
+        speakNextChunk();
+      };
       speechSynthesis.speak(utt);
+      statusDiv.textContent = `Reading chunk ${currentChunk + 1} of ${readingQueue.length}…`;
     }
+
+    // 6) pause, resume, stop controls
+    pauseBtn.addEventListener('click', () => {
+      speechSynthesis.pause();
+      statusDiv.textContent = '⏸ Paused.';
+      pauseBtn.disabled = true;
+      resumeBtn.disabled= false;
+    });
+    resumeBtn.addEventListener('click', () => {
+      speechSynthesis.resume();
+      statusDiv.textContent = '▶ Resuming…';
+      pauseBtn.disabled = false;
+      resumeBtn.disabled= true;
+    });
+    stopBtn.addEventListener('click', () => {
+      speechSynthesis.cancel();
+      isReading = false;
+      statusDiv.textContent = '■ Stopped.';
+      pauseBtn.disabled = true;
+      resumeBtn.disabled= true;
+      stopBtn.disabled  = true;
+    });
   </script>
 </body>
 </html>
