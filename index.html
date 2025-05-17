@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Advanced PDF → AI Voice Reader (Faster OCR)</title>
+  <title>Advanced PDF → AI Voice Reader (Better Voices)</title>
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -131,6 +131,7 @@
     #status.success { border-left-color: #27ae60; background-color: #eafaf1; color: #1e8449; }
     #status.processing { border-left-color: #f39c12; background-color: #fef9e7; color: #b9770e; }
     #status.info { border-left-color: #3498db; background-color: #eBF5FB; color: #2874a6;}
+    #status.warning { border-left-color: #f1c40f; background-color: #fefcf2; color: #b7950b;}
 
 
     #pdfViewContainer {
@@ -199,7 +200,7 @@
   </style>
 </head>
 <body>
-  <h1>Advanced PDF → AI Voice Reader (Faster OCR)</h1>
+  <h1>Advanced PDF → AI Voice Reader (Better Voices)</h1>
 
   <div class="flex-container">
     <div class="column-controls">
@@ -276,7 +277,7 @@
     let pageChunkMap = [];
     let currentChunkIndex = 0;
     let isReading = false;
-    let tesseractScheduler = null; // Changed from tesseractWorker
+    let tesseractScheduler = null;
     const MIN_CHUNK_LENGTH = 3;
     let isRateChangeRestart = false;
 
@@ -311,26 +312,21 @@
         return { savedVoice };
     }
 
-    async function initializeTesseractScheduler() { // Renamed function
+    async function initializeTesseractScheduler() {
         if (tesseractScheduler) {
-            await tesseractScheduler.terminate(); // Terminate existing scheduler
+            await tesseractScheduler.terminate();
             tesseractScheduler = null;
         }
         
-        const numWorkers = Math.min(navigator.hardwareConcurrency || 2, 4); // Use up to 4 workers
+        const numWorkers = Math.min(navigator.hardwareConcurrency || 2, 4);
         updateStatus(`Initializing OCR engine with ${numWorkers} worker(s)...`, 'processing');
         
         try {
             tesseractScheduler = Tesseract.createScheduler();
-            const workerPromises = [];
             for (let i = 0; i < numWorkers; i++) {
-                const worker = await Tesseract.createWorker(); // Default logger (console)
+                const worker = await Tesseract.createWorker();
                 await worker.loadLanguage(ocrLanguageSelect.value);
                 await worker.initialize(ocrLanguageSelect.value);
-                // Example: Set a common parameter for all workers if needed
-                // await worker.setParameters({
-                //   tessedit_pageseg_mode: '3', // PSM_AUTO, usually good for structured docs
-                // });
                 tesseractScheduler.addWorker(worker);
             }
             updateStatus(`OCR engine ready with ${numWorkers} worker(s).`, 'success');
@@ -341,17 +337,18 @@
         }
     }
 
-
     function populateVoices() {
         try {
             voices = speechSynthesis.getVoices();
             const { savedVoice } = loadPreferences();
-            voiceSelect.innerHTML = '';
+
+            voiceSelect.innerHTML = ''; 
 
             if (voices.length === 0) {
                 const opt = document.createElement('option');
                 opt.textContent = "No voices found in browser";
                 opt.disabled = true;
+                opt.classList.add('no-voice-msg');
                 voiceSelect.appendChild(opt);
                 previewVoiceBtn.disabled = true;
                 readBtn.disabled = true;
@@ -362,67 +359,134 @@
             previewVoiceBtn.disabled = false;
             readBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
 
-            const groupedVoices = voices.reduce((acc, voice) => {
-                const langPrefix = voice.lang.split('-')[0].toLowerCase();
-                if (!acc[langPrefix]) acc[langPrefix] = [];
-                acc[langPrefix].push(voice);
-                return acc;
-            }, {});
+            const goodQualityEnglishRegex = /Alex|Samantha|Victoria|Daniel|Google US English|Microsoft David Desktop|Microsoft Zira Desktop|Microsoft Mark Desktop|Ava|Allison|Susan|Tom|Oliver|Natural|Enhanced|Premium|WaveNet|Neural|Online|Cloud/i;
+
+            const categorizedVoices = {
+                recommendedEnglish: [],
+                otherEnglish: [],
+                ocrLanguageSpecific: [],
+                otherLanguages: {}
+            };
 
             const currentOcrLangPrefix = ocrLanguageSelect.value.substring(0, 2).toLowerCase();
-            const sortedLangGroups = Object.keys(groupedVoices).sort((a, b) => {
-                if (a === currentOcrLangPrefix && b !== currentOcrLangPrefix) return -1;
-                if (b === currentOcrLangPrefix && a !== currentOcrLangPrefix) return 1;
-                if (a === 'en' && b !== 'en') return -1;
-                if (b === 'en' && a !== 'en') return 1;
-                return a.localeCompare(b);
-            });
 
-            let voiceFoundAndSet = false;
-            sortedLangGroups.forEach(langPrefix => {
-                const optgroup = document.createElement('optgroup');
-                let langDisplayName = langPrefix.toUpperCase();
-                try {
-                    langDisplayName = new Intl.DisplayNames([navigator.language || 'en'], { type: 'language' }).of(langPrefix) || langPrefix.toUpperCase();
-                } catch (e) { /* Use prefix */ }
-                
-                optgroup.label = `--- ${langDisplayName} Voices ---`;
-                groupedVoices[langPrefix].sort((a,b) => a.name.localeCompare(b.name)).forEach(v => {
-                    const opt = document.createElement('option');
-                    opt.value = v.name;
-                    opt.textContent = `${v.name} (${v.lang})${v.localService ? ' - Local' : ''}`;
-                    opt.setAttribute('data-lang', v.lang);
-                    if (savedVoice && v.name === savedVoice) {
-                        opt.selected = true;
-                        voiceFoundAndSet = true;
+            voices.forEach(voice => {
+                const langPrefix = voice.lang.split('-')[0].toLowerCase();
+
+                if (langPrefix === 'en') {
+                    if (goodQualityEnglishRegex.test(voice.name) || voice.localService === false) {
+                        categorizedVoices.recommendedEnglish.push(voice);
+                    } else {
+                        categorizedVoices.otherEnglish.push(voice);
                     }
-                    optgroup.appendChild(opt);
-                });
-                voiceSelect.appendChild(optgroup);
+                } else if (langPrefix === currentOcrLangPrefix) {
+                    categorizedVoices.ocrLanguageSpecific.push(voice);
+                } else {
+                    if (!categorizedVoices.otherLanguages[langPrefix]) {
+                        categorizedVoices.otherLanguages[langPrefix] = [];
+                    }
+                    categorizedVoices.otherLanguages[langPrefix].push(voice);
+                }
             });
 
-            if (!voiceFoundAndSet && voiceSelect.options.length > 0) {
-                let preferredOption = Array.from(voiceSelect.options).find(opt => {
-                    if(opt.disabled) return false;
-                    const optLang = opt.getAttribute('data-lang').substring(0,2).toLowerCase();
-                    return optLang === currentOcrLangPrefix || optLang === 'en';
-                });
-                if (preferredOption) preferredOption.selected = true;
-                else {
-                    const firstEnabledOption = Array.from(voiceSelect.options).find(opt => !opt.disabled);
-                    if(firstEnabledOption) firstEnabledOption.selected = true;
+            for (const category in categorizedVoices) {
+                if (Array.isArray(categorizedVoices[category])) {
+                    categorizedVoices[category].sort((a, b) => a.name.localeCompare(b.name));
+                } else if (typeof categorizedVoices[category] === 'object') {
+                    for (const lang in categorizedVoices[category]) {
+                        categorizedVoices[category][lang].sort((a, b) => a.name.localeCompare(b.name));
+                    }
                 }
             }
             
-            if(voiceSelect.options.length === 0 || Array.from(voiceSelect.options).every(opt => opt.disabled)) {
-                if(!voiceSelect.querySelector('option[disabled]')) {
+            let voiceFoundAndSet = false; 
+
+            const appendVoiceOptions = (groupElement, voiceArray, selectedVoiceNameCheck) => {
+                voiceArray.forEach(v => {
                     const opt = document.createElement('option');
-                    opt.textContent = "No voices available";
+                    opt.value = v.name;
+                    opt.textContent = `${v.name} (${v.lang}) ${v.localService ? '(Local)' : '(Network)'}`;
+                    opt.setAttribute('data-lang', v.lang);
+                    if (selectedVoiceNameCheck && v.name === selectedVoiceNameCheck) {
+                        opt.selected = true;
+                        voiceFoundAndSet = true;
+                    }
+                    groupElement.appendChild(opt);
+                });
+            };
+
+            if (categorizedVoices.recommendedEnglish.length > 0) {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = "--- Recommended English Voices ---";
+                appendVoiceOptions(optgroup, categorizedVoices.recommendedEnglish, savedVoice);
+                voiceSelect.appendChild(optgroup);
+            }
+
+            if (currentOcrLangPrefix !== 'en' && categorizedVoices.ocrLanguageSpecific.length > 0) {
+                let langDisplayName = currentOcrLangPrefix.toUpperCase();
+                try { langDisplayName = new Intl.DisplayNames([navigator.language || 'en'], { type: 'language' }).of(currentOcrLangPrefix) || langDisplayName; } catch (e) {}
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = `--- ${langDisplayName} Voices (OCR Language) ---`;
+                appendVoiceOptions(optgroup, categorizedVoices.ocrLanguageSpecific, savedVoice);
+                voiceSelect.appendChild(optgroup);
+            }
+            
+            if (categorizedVoices.otherEnglish.length > 0) {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = "--- Other English Voices ---";
+                appendVoiceOptions(optgroup, categorizedVoices.otherEnglish, savedVoice);
+                voiceSelect.appendChild(optgroup);
+            }
+
+            const otherLangSortedKeys = Object.keys(categorizedVoices.otherLanguages).sort();
+            otherLangSortedKeys.forEach(langPrefix => {
+                if (categorizedVoices.otherLanguages[langPrefix].length > 0) {
+                    let langDisplayName = langPrefix.toUpperCase();
+                    try { langDisplayName = new Intl.DisplayNames([navigator.language || 'en'], { type: 'language' }).of(langPrefix) || langDisplayName; } catch (e) {}
+                    const optgroup = document.createElement('optgroup');
+                    optgroup.label = `--- ${langDisplayName} Voices ---`;
+                    appendVoiceOptions(optgroup, categorizedVoices.otherLanguages[langPrefix], savedVoice);
+                    voiceSelect.appendChild(optgroup);
+                }
+            });
+
+            if (!voiceFoundAndSet && voiceSelect.options.length > 0) {
+                const groupLabelsInOrder = [
+                    "--- Recommended English Voices ---",
+                    (currentOcrLangPrefix !== 'en' ? `--- ${(new Intl.DisplayNames([navigator.language || 'en'], { type: 'language' }).of(currentOcrLangPrefix) || currentOcrLangPrefix.toUpperCase())} Voices (OCR Language) ---` : null),
+                    "--- Other English Voices ---"
+                ].filter(Boolean);
+
+                let selectedAnOption = false;
+                for (const groupLabel of groupLabelsInOrder) {
+                    const optgroupElement = Array.from(voiceSelect.children).find(child => child.tagName === 'OPTGROUP' && child.label === groupLabel);
+                    if (optgroupElement && optgroupElement.children.length > 0) {
+                        const firstEnabledInGroup = Array.from(optgroupElement.children).find(opt => !opt.disabled);
+                        if (firstEnabledInGroup) {
+                            firstEnabledInGroup.selected = true;
+                            selectedAnOption = true;
+                            break;
+                        }
+                    }
+                }
+                if (!selectedAnOption) {
+                     const firstOverallEnabledOption = Array.from(voiceSelect.options).find(opt => !opt.disabled);
+                     if(firstOverallEnabledOption) firstOverallEnabledOption.selected = true;
+                }
+            }
+            
+            if (Array.from(voiceSelect.options).length === 0 || Array.from(voiceSelect.options).every(opt => opt.disabled)) {
+                 if (!voiceSelect.querySelector('option.no-voice-msg')) {
+                    const opt = document.createElement('option');
+                    opt.textContent = "No suitable voices available";
                     opt.disabled = true;
+                    opt.classList.add('no-voice-msg');
                     voiceSelect.appendChild(opt);
                 }
                 readBtn.disabled = true;
                 previewVoiceBtn.disabled = true;
+                if (voices.length > 0) updateStatus('No suitable voices after filtering. Check browser settings.', 'warning');
+
             }
 
         } catch (error) {
@@ -469,9 +533,9 @@
     
     ocrLanguageSelect.addEventListener('change', async () => {
         savePreferences();
-        resetReadingState(true, true); // OCR lang change invalidates cache & scheduler
-        await initializeTesseractScheduler(); // Re-initialize scheduler with new language
-        populateVoices();
+        resetReadingState(true, true);
+        await initializeTesseractScheduler();
+        populateVoices(); // Repopulate voices to reflect new OCR lang preference
     });
 
     clearPdfBtn.addEventListener('click', () => {
@@ -511,10 +575,8 @@
         resumeBtn.disabled = true;
         stopBtn.disabled = true;
         readBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
-        // Enable clear button if there's a file selected or content in view
         const fileSelected = pdfFileInput.files && pdfFileInput.files.length > 0;
         clearPdfBtn.disabled = ! (fileSelected || pdfViewContainer.innerHTML !== '');
-
 
         removePageHighlight();
     }
@@ -523,12 +585,9 @@
         speedValue.textContent = parseFloat(speedRange.value).toFixed(1);
         savePreferences();
 
-        if (isReading && (speechSynthesis.speaking || speechSynthesis.paused)) {
-             if (speechSynthesis.speaking) { // Only act if actively speaking
-                isRateChangeRestart = true; 
-                speechSynthesis.cancel(); 
-            }
-            // If paused, new rate will apply when next chunk is initiated by resume->speakNextChunk sequence
+        if (isReading && speechSynthesis.speaking) { // Only if actively speaking
+            isRateChangeRestart = true; 
+            speechSynthesis.cancel(); 
         }
     });
     voiceSelect.addEventListener('change', savePreferences);
@@ -546,7 +605,7 @@
         if (!preview.voice) {
             updateStatus('Selected voice for preview not found. Try another.', 'error'); return;
         }
-        preview.lang = preview.voice.lang;
+        preview.lang = selectedOption.getAttribute('data-lang') || (preview.voice.lang || 'en-US');
         preview.rate  = parseFloat(speedRange.value);
         preview.onerror = (event) => {
             console.error('SpeechSynthesisUtterance error:', event.error);
@@ -574,16 +633,12 @@
                     pageCanvas.width = viewport.width;
                     pageCanvas.height = viewport.height;
                     pageCanvas.style.maxWidth = "100%";
-                    // Note: Canvases need to be appended in order, so this part is tricky with Promise.all
-                    // For simplicity, we'll append them after all are created if order matters, or render sequentially.
-                    // Let's render and append sequentially for guaranteed order.
                     return {canvas: pageCanvas, context: pageCanvas.getContext('2d'), viewport: viewport, page: page, pageNum: i};
                 })
             );
         }
         
         const pageInfos = await Promise.all(pageRenderPromises);
-        // Sort by pageNum to ensure correct order for appending
         pageInfos.sort((a,b) => a.pageNum - b.pageNum); 
 
         for(const info of pageInfos) {
@@ -603,7 +658,7 @@
         if (!selectedVoiceOption || !selectedVoiceOption.value || selectedVoiceOption.disabled) {
             updateStatus('🚫 Please select an available voice.', 'error'); return;
         }
-        if (!tesseractScheduler) { // Check scheduler
+        if (!tesseractScheduler) {
             updateStatus('🚫 OCR engine not initialized. Please wait or refresh.', 'error');
             await initializeTesseractScheduler();
             if (!tesseractScheduler) return;
@@ -641,7 +696,7 @@
             return;
         }
 
-        resetReadingState(true, true); // Full visual reset and clear any old cache
+        resetReadingState(true, true);
         updateStatus('Loading PDF…', 'processing');
 
         try {
@@ -652,13 +707,11 @@
             updateStatus(`Found ${numPages} page(s). Rendering pages...`, 'processing');
             pdfViewContainer.innerHTML = '';
             
-            const ocrJobs = [];
-            const pageCanvases = []; // To hold references to canvases for OCR
+            const pageCanvases = []; 
 
-            // First pass: Render all pages and prepare canvases
             for (let i = 1; i <= numPages; i++) {
                 const page = await currentProcessedPdfDocument.getPage(i);
-                const viewport = page.getViewport({ scale: 1.5 }); // Or make scale configurable
+                const viewport = page.getViewport({ scale: 1.5 });
                 const pageCanvas = document.createElement('canvas');
                 pageCanvas.id = `pdfPageCanvas-${i}`;
                 const pageCtx = pageCanvas.getContext('2d', { willReadFrequently: true });
@@ -666,20 +719,19 @@
                 pageCanvas.width = viewport.width;
                 pageCanvas.height = viewport.height;
                 pageCanvas.style.maxWidth = "100%";
-                pdfViewContainer.appendChild(pageCanvas); // Append canvas to DOM
+                pdfViewContainer.appendChild(pageCanvas);
                 
                 await page.render({ canvasContext: pageCtx, viewport: viewport }).promise;
-                pageCanvases.push(pageCanvas); // Store for OCR job
+                pageCanvases.push(pageCanvas);
 
                 if (i === 1 && pageCanvas.scrollIntoView) pageCanvas.scrollIntoView({ behavior: 'auto', block: 'start' });
             }
             
             updateStatus(`All ${numPages} pages rendered. Starting OCR jobs...`, 'processing');
-
-            // Second pass: Create OCR job promises for all rendered canvases
+            const ocrJobs = [];
             for (let i = 0; i < numPages; i++) {
                  ocrJobs.push({
-                    pageNum: i + 1, // Page numbers are 1-indexed
+                    pageNum: i + 1,
                     promise: tesseractScheduler.addJob('recognize', pageCanvases[i])
                 });
             }
@@ -700,22 +752,18 @@
                             ocrCompletedCount++;
                             updateStatus(`OCRing pages... (${ocrCompletedCount}/${totalOcrJobs})`, 'processing');
                             console.warn(`OCR failed for page ${job.pageNum}:`, error);
-                            return { error, pageNum: job.pageNum, data: {text: ""} }; // Ensure data.text exists
+                            return { error, pageNum: job.pageNum, data: {text: ""} };
                         })
                 )
             );
             
             updateStatus('Processing OCR results...', 'processing');
-            readingQueue = []; // Reset before populating
+            readingQueue = [];
             pageChunkMap = [];
-
-            ocrResults.sort((a,b) => a.pageNum - b.pageNum); // Ensure results are in page order
+            ocrResults.sort((a,b) => a.pageNum - b.pageNum);
 
             for (const result of ocrResults) {
-                if (result.error) {
-                    // Error already logged, skip this page's text
-                    continue;
-                }
+                if (result.error) continue;
                 const { data: { text }, pageNum } = result;
                 const chunks = text.match(new RegExp(`(.|[\\r\\n]){1,250}(?=\\s|$)`, 'g'));
                 if (chunks) {
@@ -727,7 +775,6 @@
                     });
                 }
             }
-
 
             if (!readingQueue.length) {
                 updateStatus('⚠️ No text detected or extracted from the PDF after OCR.', 'error');
@@ -759,7 +806,6 @@
             updateStatus(`🚫 Error: ${error.message}. Try again.`, 'error');
             resetReadingState(true, true);
             readBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
-            // clearPdfBtn state handled by resetReadingState
         }
     });
 
@@ -782,7 +828,7 @@
         removePageHighlight();
 
         if (isRateChangeRestart) { 
-            // Flag will be reset in onend if it was a rate-change initiated cancel
+            // Flag handled in onend
         }
 
         if (!isReading || currentChunkIndex >= readingQueue.length) {
@@ -818,12 +864,12 @@
         if (selectedVoiceOption && selectedVoiceOption.value) {
             utterance.voice = voices.find(v => v.name === selectedVoiceOption.value);
         }
-        if (!utterance.voice && voices.length > 0) {
+        if (!utterance.voice && voices.length > 0) { // Fallback voice selection
             const ocrLangPrefix = ocrLanguageSelect.value.substring(0,2).toLowerCase();
             utterance.voice = voices.find(v => v.lang.startsWith(ocrLangPrefix)) || voices.find(v => v.lang.startsWith('en')) || voices[0];
         }
         
-        utterance.lang = utterance.voice ? utterance.voice.lang : (ocrLanguageSelect.value === 'eng' ? 'en-US' : ocrLanguageSelect.value);
+        utterance.lang = selectedVoiceOption ? selectedVoiceOption.getAttribute('data-lang') : (utterance.voice ? utterance.voice.lang : 'en-US');
         utterance.rate  = parseFloat(speedRange.value);
 
         utterance.onstart = () => {
@@ -895,7 +941,7 @@
     });
 
     window.addEventListener('beforeunload', async () => {
-        if (tesseractScheduler) { // Check scheduler
+        if (tesseractScheduler) {
             await tesseractScheduler.terminate();
             tesseractScheduler = null;
         }
