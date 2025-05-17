@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PDF to Speech Reader</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 2em auto; line-height: 1.4; }
+    label, select, input, button { margin: 0.5em 0; display: block; }
+    #status { margin: 1em 0; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>PDF → AI Voice Reader</h1>
+
+  <input type="file" id="pdfFileInput" accept="application/pdf">
+  <div id="status">No file selected.</div>
+
+  <label for="voiceSelect">Voice:</label>
+  <select id="voiceSelect"></select>
+
+  <label for="speedRange">
+    Speed: <span id="speedValue">1</span>x
+  </label>
+  <input type="range" id="speedRange" min="0.5" max="2" step="0.1" value="1">
+
+  <button id="readBtn">Read PDF Aloud</button>
+
+  <!-- PDF.js library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script>
+    // Tell PDF.js where its worker file lives
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+  </script>
+
+  <!-- Tesseract.js for OCR -->
+  <script src="https://unpkg.com/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+
+  <script>
+    // Wait for voices to load, then populate dropdown
+    document.addEventListener('DOMContentLoaded', () => {
+      populateVoices();
+      if (speechSynthesis.onvoiceschanged !== undefined) {
+        speechSynthesis.onvoiceschanged = populateVoices;
+      }
+    });
+
+    const pdfFileInput = document.getElementById('pdfFileInput');
+    const statusDiv     = document.getElementById('status');
+    const voiceSelect   = document.getElementById('voiceSelect');
+    const speedRange    = document.getElementById('speedRange');
+    const speedValue    = document.getElementById('speedValue');
+    const readBtn       = document.getElementById('readBtn');
+
+    let voices = [];
+    function populateVoices() {
+      voices = speechSynthesis.getVoices();
+      voiceSelect.innerHTML = '';
+      voices.forEach((v, i) => {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `${v.name} (${v.lang})`;
+        voiceSelect.appendChild(opt);
+      });
+    }
+
+    // Update displayed speed when slider moves
+    speedRange.addEventListener('input', () => {
+      speedValue.textContent = speedRange.value;
+    });
+
+    readBtn.addEventListener('click', async () => {
+      const file = pdfFileInput.files[0];
+      if (!file) {
+        statusDiv.textContent = '🚫 Please select a PDF first.';
+        return;
+      }
+
+      statusDiv.textContent = 'Loading PDF…';
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const numPages = pdf.numPages;
+      let fullText = '';
+
+      // Loop through pages, render & OCR each
+      for (let i = 1; i <= numPages; i++) {
+        statusDiv.textContent = `Processing page ${i} of ${numPages}…`;
+        const page = await pdf.getPage(i);
+        const vp = page.getViewport({ scale: 1.5 });
+        const canvas = document.createElement('canvas');
+        canvas.width  = vp.width;
+        canvas.height = vp.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+
+        const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
+        fullText += text + '\n\n';
+      }
+
+      statusDiv.textContent = 'OCR done — now reading aloud…';
+      speakText(fullText);
+    });
+
+    function speakText(text) {
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.voice = voices[voiceSelect.value];
+      utt.rate  = parseFloat(speedRange.value);
+      utt.onend = () => statusDiv.textContent = '✅ Finished reading.';
+      speechSynthesis.speak(utt);
+    }
+  </script>
+</body>
+</html>
