@@ -4,60 +4,198 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>PDF → AI Voice Reader</title>
+
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
+
   <style>
-    body {
-      font-family: sans-serif;
-      max-width: 700px;
-      margin: 2em auto;
-      line-height: 1.4;
+    :root {
+      --primary: #4f46e5;
+      --primary-light: #6366f1;
+      --bg: #f3f4f6;
+      --card-bg: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --shadow: rgba(0, 0, 0, 0.1);
     }
-    label, select, input, button {
-      margin: 0.5em 0;
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 720px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background: var(--card-bg);
+      border-radius: 12px;
+      box-shadow: 0 4px 12px var(--shadow);
+    }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 1.5rem;
+      color: var(--primary);
+    }
+    label {
       display: block;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+    input[type="file"] {
+      display: block;
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #fff;
+      margin-bottom: 1rem;
     }
     #status {
-      margin: 1em 0;
-      font-weight: bold;
+      display: block;
+      text-align: center;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 1rem;
     }
     #pdfCanvas {
-      border: 1px solid #ccc;
       width: 100%;
-      margin: 1em 0;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px var(--shadow);
+      margin-bottom: 1.5rem;
     }
-    #controls button {
-      margin-right: 1em;
+    .voice-preview,
+    .speed-control,
+    .controls {
+      margin-top: 1rem;
+      display: flex;
+      align-items: center;
+    }
+    .voice-preview select,
+    .speed-control input[type=range],
+    .controls button,
+    .voice-preview button {
+      font-family: inherit;
+    }
+    .voice-preview select {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+    }
+    .voice-preview button {
+      margin-left: 0.5rem;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .voice-preview button:hover:not(:disabled) {
+      background: var(--primary-light);
+    }
+    .speed-control {
+      justify-content: space-between;
+    }
+    .speed-control label {
+      white-space: nowrap;
+    }
+    #speedRange {
+      flex: 1;
+      margin: 0 1rem;
+    }
+    #speedValue {
+      font-weight: 600;
+      color: var(--muted);
+      min-width: 2ch;
+      text-align: right;
+    }
+    .controls {
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .controls button {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      padding: 0.6rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background 0.2s;
+    }
+    .controls button:disabled {
+      background: #d1d5db;
+      cursor: not-allowed;
+    }
+    .controls button:hover:not(:disabled) {
+      background: var(--primary-light);
+    }
+
+    /* Custom slider styling */
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 8px;
+      background: #d1d5db;
+      border-radius: 4px;
+      outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: var(--primary);
+      border-radius: 50%;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-top: -4px;
+    }
+    input[type=range]::-webkit-slider-thumb:hover {
+      background: var(--primary-light);
     }
   </style>
 </head>
 <body>
-  <h1>PDF → AI Voice Reader</h1>
+  <div class="container">
+    <h1>PDF → AI Voice Reader</h1>
 
-  <!-- file input -->
-  <input type="file" id="pdfFileInput" accept="application/pdf">
+    <!-- File input -->
+    <input type="file" id="pdfFileInput" accept="application/pdf">
+    <span id="status">No file selected.</span>
 
-  <!-- status feedback -->
-  <div id="status">No file selected.</div>
+    <!-- PDF preview -->
+    <canvas id="pdfCanvas"></canvas>
 
-  <!-- PDF preview canvas -->
-  <canvas id="pdfCanvas"></canvas>
+    <!-- Voice selection + preview -->
+    <label for="voiceSelect">Voice (US-English only):</label>
+    <div class="voice-preview">
+      <select id="voiceSelect"></select>
+      <button id="previewVoiceBtn">Preview ▶</button>
+    </div>
 
-  <!-- voice selection & preview -->
-  <label for="voiceSelect">Voice (US-English only):</label>
-  <select id="voiceSelect"></select>
-  <button id="previewVoiceBtn">▶ Preview Voice</button>
+    <!-- Speed control -->
+    <div class="speed-control">
+      <label for="speedRange">Speed: <span id="speedValue">1</span>x</label>
+      <input type="range" id="speedRange" min="0.5" max="2" step="0.1" value="1">
+    </div>
 
-  <!-- speed control -->
-  <label for="speedRange">
-    Speed: <span id="speedValue">1</span>x
-  </label>
-  <input type="range" id="speedRange" min="0.5" max="2" step="0.1" value="1">
-
-  <!-- read / control buttons -->
-  <div id="controls">
-    <button id="readBtn">► Read PDF Aloud</button>
-    <button id="pauseBtn" disabled>❚❚ Pause</button>
-    <button id="resumeBtn" disabled>► Resume</button>
-    <button id="stopBtn" disabled>■ Stop</button>
+    <!-- Playback controls -->
+    <div class="controls">
+      <button id="readBtn">Read ▶</button>
+      <button id="pauseBtn" disabled>Pause ⏸</button>
+      <button id="resumeBtn" disabled>Resume ▶</button>
+      <button id="stopBtn" disabled>Stop ■</button>
+    </div>
   </div>
 
   <!-- PDF.js -->
@@ -72,40 +210,38 @@
 
   <script>
     // DOM refs
-    const pdfFileInput   = document.getElementById('pdfFileInput');
-    const statusDiv      = document.getElementById('status');
-    const pdfCanvas      = document.getElementById('pdfCanvas');
-    const voiceSelect    = document.getElementById('voiceSelect');
-    const previewVoiceBtn= document.getElementById('previewVoiceBtn');
-    const speedRange     = document.getElementById('speedRange');
-    const speedValue     = document.getElementById('speedValue');
-    const readBtn        = document.getElementById('readBtn');
-    const pauseBtn       = document.getElementById('pauseBtn');
-    const resumeBtn      = document.getElementById('resumeBtn');
-    const stopBtn        = document.getElementById('stopBtn');
+    const pdfFileInput    = document.getElementById('pdfFileInput');
+    const statusDiv       = document.getElementById('status');
+    const pdfCanvas       = document.getElementById('pdfCanvas');
+    const voiceSelect     = document.getElementById('voiceSelect');
+    const previewVoiceBtn = document.getElementById('previewVoiceBtn');
+    const speedRange      = document.getElementById('speedRange');
+    const speedValue      = document.getElementById('speedValue');
+    const readBtn         = document.getElementById('readBtn');
+    const pauseBtn        = document.getElementById('pauseBtn');
+    const resumeBtn       = document.getElementById('resumeBtn');
+    const stopBtn         = document.getElementById('stopBtn');
 
     let voices = [];
-    let readingQueue = [];      // array of text chunks
-    let currentChunk = 0;       // index in queue
+    let readingQueue = [];
+    let currentChunk = 0;
     let isReading = false;
 
-    // 1) populate voices (filter to US English + best-known names)
+    // 1) Populate US-English “best” voices
     function populateVoices() {
       voices = speechSynthesis.getVoices();
-      // first, try an allowlist of “high-quality” names
       let filtered = voices.filter(v =>
         v.lang === 'en-US' &&
         /Google US English|Samantha|Zira/i.test(v.name)
       );
-      // fallback to any en-US if none match
       if (!filtered.length) {
         filtered = voices.filter(v => v.lang === 'en-US');
       }
       voiceSelect.innerHTML = '';
-      filtered.forEach((v, i) => {
+      filtered.forEach(v => {
         const opt = document.createElement('option');
         opt.value = v.name;
-        opt.textContent = `${v.name}`;
+        opt.textContent = v.name;
         voiceSelect.appendChild(opt);
       });
     }
@@ -117,21 +253,21 @@
       }
     });
 
-    // 2) speed slider live update
+    // 2) Speed slider live update
     speedRange.addEventListener('input', () => {
       speedValue.textContent = speedRange.value;
     });
 
-    // 3) voice preview
+    // 3) Voice preview
     previewVoiceBtn.addEventListener('click', () => {
       speechSynthesis.cancel();
-      const preview = new SpeechSynthesisUtterance('This is a preview of the selected voice.');
-      preview.voice = voices.find(v => v.name === voiceSelect.value);
-      preview.rate  = parseFloat(speedRange.value);
-      speechSynthesis.speak(preview);
+      const utt = new SpeechSynthesisUtterance('This is a preview of the selected voice.');
+      utt.voice = voices.find(v => v.name === voiceSelect.value);
+      utt.rate  = parseFloat(speedRange.value);
+      speechSynthesis.speak(utt);
     });
 
-    // 4) main “read PDF” handler
+    // 4) Read PDF button
     readBtn.addEventListener('click', async () => {
       const file = pdfFileInput.files[0];
       if (!file) {
@@ -139,23 +275,22 @@
         return;
       }
 
-      // reset any prior reading
+      // Reset
       speechSynthesis.cancel();
-      isReading    = false;
+      isReading = false;
       readingQueue = [];
       currentChunk = 0;
       pauseBtn.disabled = true;
-      resumeBtn.disabled= true;
-      stopBtn.disabled  = true;
+      resumeBtn.disabled = true;
+      stopBtn.disabled = true;
 
       statusDiv.textContent = 'Loading PDF…';
       const data = await file.arrayBuffer();
       const pdf  = await pdfjsLib.getDocument({ data }).promise;
       const n    = pdf.numPages;
-
       statusDiv.textContent = `Reading ${n} page(s)…`;
 
-      // prepare offscreen canvas for OCR
+      // Offscreen canvas for OCR
       const ocrCanvas = document.createElement('canvas');
       const ocrCtx    = ocrCanvas.getContext('2d');
       const dispCtx   = pdfCanvas.getContext('2d');
@@ -165,18 +300,17 @@
         const page = await pdf.getPage(i);
         const vp   = page.getViewport({ scale: 1.5 });
 
-        // size both canvases
+        // Resize canvases
         ocrCanvas.width = dispCtx.canvas.width  = vp.width;
         ocrCanvas.height= dispCtx.canvas.height = vp.height;
 
-        // render page into both canvases
+        // Render to both
         await page.render({ canvasContext: ocrCtx, viewport: vp }).promise;
         await page.render({ canvasContext: dispCtx, viewport: vp }).promise;
 
-        // run OCR
+        // OCR & chunk
         const { data: { text } } = await Tesseract.recognize(ocrCanvas, 'eng');
-        // split into manageable chunks (~500 chars)
-        text.match(/(.|[\r\n]){1,500}(?=\s|$)/g).forEach(chunk => {
+        (text.match(/(.|[\r\n]){1,500}(?=\s|$)/g) || [text]).forEach(chunk => {
           readingQueue.push(chunk);
         });
       }
@@ -193,7 +327,7 @@
       speakNextChunk();
     });
 
-    // 5) speak chunks in sequence
+    // 5) Speak chunks sequentially
     function speakNextChunk() {
       if (!isReading || currentChunk >= readingQueue.length) {
         statusDiv.textContent = '✅ Finished reading.';
@@ -214,7 +348,7 @@
       statusDiv.textContent = `Reading chunk ${currentChunk + 1} of ${readingQueue.length}…`;
     }
 
-    // 6) pause, resume, stop controls
+    // 6) Playback controls
     pauseBtn.addEventListener('click', () => {
       speechSynthesis.pause();
       statusDiv.textContent = '⏸ Paused.';
