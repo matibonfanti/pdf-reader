@@ -7,7 +7,7 @@
   <style>
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      max-width: 1000px; /* Increased max-width for better layout with more options */
+      max-width: 1000px;
       margin: 2em auto;
       line-height: 1.6;
       background-color: #f4f7f6;
@@ -42,7 +42,7 @@
       padding: 0.75em;
       border-radius: 4px;
       background-color: #f9f9f9;
-      margin-bottom: 1em; /* Added margin for spacing */
+      margin-bottom: 1em;
     }
 
     input[type="file"]::file-selector-button {
@@ -104,17 +104,17 @@
       width: auto;
       display: inline-block;
       padding: 0.5em 1em;
-      margin-left: 5px; /* Align next to select nicely */
+      margin-left: 5px;
     }
     #previewVoiceBtn:hover:not(:disabled) { background-color: #732d91; }
 
     .voice-speed-container {
         display: flex;
         align-items: center;
-        gap: 10px; /* Space between select and button */
+        gap: 10px;
     }
     .voice-speed-container select {
-        flex-grow: 1; /* Select takes available space */
+        flex-grow: 1;
     }
 
 
@@ -125,7 +125,7 @@
       border-radius: 4px;
       background-color: #e9ecef;
       border-left: 5px solid #3498db;
-      min-height: 1.6em; /* Prevent layout shift */
+      min-height: 1.6em;
     }
     #status.error { border-left-color: #e74c3c; background-color: #fadbd8; color: #a93226; }
     #status.success { border-left-color: #27ae60; background-color: #eafaf1; color: #1e8449; }
@@ -136,7 +136,7 @@
     #pdfViewContainer {
       border: 1px solid #ccc;
       width: 100%;
-      max-height: 700px; /* Increased height */
+      max-height: 700px;
       overflow-y: auto;
       margin: 1em 0;
       background-color: #e8e8e8;
@@ -147,32 +147,32 @@
     #pdfViewContainer canvas {
       display: block;
       margin: 0 auto 15px auto;
-      border: 2px solid #bbb; /* Default border */
+      border: 2px solid #bbb;
       max-width: 100%;
       height: auto;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      transition: border-color 0.3s ease, box-shadow 0.3s ease; /* Smooth transition for highlight */
+      transition: border-color 0.3s ease, box-shadow 0.3s ease;
     }
     #pdfViewContainer canvas.currentPageHighlight {
-        border-color: #3498db; /* Highlight color */
+        border-color: #3498db;
         box-shadow: 0 0 15px rgba(52, 152, 219, 0.7);
     }
 
 
     .flex-container {
       display: flex;
-      flex-wrap: wrap; /* Allow wrapping on smaller screens */
+      flex-wrap: wrap;
       gap: 20px;
     }
 
     .column-controls {
       flex: 1;
-      min-width: 300px; /* Minimum width for controls column */
+      min-width: 300px;
     }
 
     .column-pdf-view {
       flex: 2;
-      min-width: 400px; /* Minimum width for PDF view */
+      min-width: 400px;
       display: flex;
       flex-direction: column;
     }
@@ -189,12 +189,12 @@
     }
     #controls {
       margin-top: 1em;
-      display: flex; /* For better button alignment */
-      flex-wrap: wrap; /* Allow buttons to wrap */
-      gap: 0.5em; /* Spacing between buttons */
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5em;
     }
     #controls button {
-        flex-grow: 1; /* Allow buttons to grow and fill space if needed */
+        flex-grow: 1;
     }
   </style>
 </head>
@@ -214,10 +214,9 @@
             <option value="eng">English</option>
             <option value="spa">Español (Spanish)</option>
             <option value="fra">Français (French)</option>
-            </select>
+        </select>
 
-        <label for="voiceSelect">Voice:</label>
-        <div class="voice-speed-container">
+        <label for="voiceSelect">Voice:</label> <div class="voice-speed-container">
             <select id="voiceSelect"></select>
             <button id="previewVoiceBtn" title="Preview selected voice">▶</button>
         </div>
@@ -244,7 +243,7 @@
         <h2>PDF Preview & Status</h2>
         <div id="status">No file selected. Select a PDF and click "Read PDF".</div>
         <div id="pdfViewContainer">
-          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -273,14 +272,14 @@
 
     let voices = [];
     let readingQueue = [];
-    let pageChunkMap = []; // To map chunks to their page numbers for highlighting
+    let pageChunkMap = [];
     let currentChunkIndex = 0;
     let isReading = false;
     let currentPdf = null;
     let tesseractWorker = null;
-    const MIN_CHUNK_LENGTH = 3; // Minimum characters for a chunk to be spoken
+    const MIN_CHUNK_LENGTH = 3;
 
-    function updateStatus(message, type = 'info') { // Default type 'info'
+    function updateStatus(message, type = 'info') {
         statusDiv.textContent = message;
         statusDiv.className = type;
     }
@@ -303,13 +302,12 @@
         if (savedOcrLang) {
             ocrLanguageSelect.value = savedOcrLang;
         }
-        // Voice selection depends on voices being populated, so handled in populateVoices
         return { savedVoice };
     }
 
     async function initializeTesseractWorker() {
         if (tesseractWorker) {
-            await tesseractWorker.terminate(); // Terminate existing worker if any
+            await tesseractWorker.terminate();
             tesseractWorker = null;
         }
         updateStatus('Initializing OCR engine...', 'processing');
@@ -317,12 +315,7 @@
             tesseractWorker = await Tesseract.createWorker({
                 logger: m => {
                     if (m.status === 'recognizing text') {
-                        const progress = (m.progress * 100).toFixed(0);
-                        // Update status for the current page being OCR'd, if possible
-                        // This requires knowing which page the current job is for,
-                        // which is implicitly handled by the loop calling recognize.
-                        // For a more granular update, we might need to pass page info to logger.
-                        console.log(`OCR Progress: ${progress}% for current page.`);
+                        // console.log(`OCR Progress: ${(m.progress * 100).toFixed(0)}%`);
                     }
                 }
             });
@@ -332,37 +325,21 @@
         } catch (error) {
             console.error("Error initializing Tesseract worker:", error);
             updateStatus(`Error initializing OCR: ${error.message}`, 'error');
-            tesseractWorker = null; // Ensure it's null on failure
+            tesseractWorker = null;
         }
     }
 
 
     function populateVoices() {
         try {
-            voices = speechSynthesis.getVoices();
-            const { savedVoice } = loadPreferences(); // Get saved voice here
+            voices = speechSynthesis.getVoices(); // Get all voices
+            const { savedVoice } = loadPreferences();
 
-            let filtered = voices.filter(v =>
-                v.lang.startsWith('en-') && // Prioritize English, but be more inclusive initially
-                /Google US English|Samantha|Zira|Alex|Microsoft David Desktop|Microsoft Mark Desktop|Natural/i.test(v.name)
-            );
-            if (!filtered.length) {
-                filtered = voices.filter(v => v.lang.startsWith('en-')); // Fallback to any English
-            }
-            if (!filtered.length) { // If still no English, show all available (less ideal)
-                 filtered = voices;
-            }
+            voiceSelect.innerHTML = ''; // Clear previous options
 
-
-            voiceSelect.innerHTML = '';
-            if (filtered.length === 0 && voices.length > 0) { // If filtering removed all, but some voices exist
-                filtered = voices; // Show all voices as a last resort
-            }
-
-
-            if (filtered.length === 0) {
+            if (voices.length === 0) {
                 const opt = document.createElement('option');
-                opt.textContent = "No voices found";
+                opt.textContent = "No voices found in browser";
                 opt.disabled = true;
                 voiceSelect.appendChild(opt);
                 previewVoiceBtn.disabled = true;
@@ -374,31 +351,72 @@
             previewVoiceBtn.disabled = false;
             readBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
 
+            // Group voices by language prefix (e.g., 'en', 'es')
+            const groupedVoices = voices.reduce((acc, voice) => {
+                const langPrefix = voice.lang.split('-')[0].toLowerCase(); // 'en-US' -> 'en'
+                if (!acc[langPrefix]) {
+                    acc[langPrefix] = [];
+                }
+                acc[langPrefix].push(voice);
+                return acc;
+            }, {});
+
+            const currentOcrLangPrefix = ocrLanguageSelect.value.substring(0, 2).toLowerCase();
+            const sortedLangGroups = Object.keys(groupedVoices).sort((a, b) => {
+                if (a === currentOcrLangPrefix && b !== currentOcrLangPrefix) return -1;
+                if (b === currentOcrLangPrefix && a !== currentOcrLangPrefix) return 1;
+                if (a === 'en' && b !== 'en') return -1;
+                if (b === 'en' && a !== 'en') return 1;
+                return a.localeCompare(b);
+            });
 
             let voiceFoundAndSet = false;
-            filtered.forEach((v) => {
-                const opt = document.createElement('option');
-                opt.value = v.name;
-                opt.textContent = `${v.name} (${v.lang})`;
-                if (savedVoice && v.name === savedVoice) {
-                    opt.selected = true;
-                    voiceFoundAndSet = true;
-                }
-                voiceSelect.appendChild(opt);
+            sortedLangGroups.forEach(langPrefix => {
+                const optgroup = document.createElement('optgroup');
+                let langDisplayName = langPrefix.toUpperCase();
+                try {
+                    // Attempt to get a more human-readable language name
+                    langDisplayName = new Intl.DisplayNames([navigator.language || 'en'], { type: 'language' }).of(langPrefix) || langPrefix.toUpperCase();
+                } catch (e) { /* Use prefix if DisplayNames fails */ }
+                
+                optgroup.label = `--- ${langDisplayName} Voices ---`;
+
+                groupedVoices[langPrefix].sort((a,b) => a.name.localeCompare(b.name)).forEach(v => { // Sort voices within language group
+                    const opt = document.createElement('option');
+                    opt.value = v.name;
+                    // Show if it's a local service voice, as they are often higher quality
+                    opt.textContent = `${v.name} (${v.lang})${v.localService ? ' - Local (High Quality)' : ''}`;
+                    opt.setAttribute('data-lang', v.lang); // Store full lang tag for utterance
+                    if (savedVoice && v.name === savedVoice) {
+                        opt.selected = true;
+                        voiceFoundAndSet = true;
+                    }
+                    optgroup.appendChild(opt);
+                });
+                voiceSelect.appendChild(optgroup);
             });
 
             if (!voiceFoundAndSet && voiceSelect.options.length > 0) {
-                voiceSelect.options[0].selected = true; // Select first if saved not found
+                // Try to select first voice in OCR language group or English group
+                let preferredOption = Array.from(voiceSelect.options).find(opt => {
+                    const optLang = opt.getAttribute('data-lang').substring(0,2).toLowerCase();
+                    return optLang === currentOcrLangPrefix || optLang === 'en';
+                });
+                if (preferredOption) {
+                    preferredOption.selected = true;
+                } else {
+                    voiceSelect.options[0].selected = true; // Fallback to the very first option
+                }
             }
-            if(voiceSelect.options.length === 0) { // Absolute fallback
+            
+            if(voiceSelect.options.length === 0) { // Should not happen if voices.length > 0
                 const opt = document.createElement('option');
-                opt.textContent = "No voices available";
+                opt.textContent = "No voices available after filtering";
                 opt.disabled = true;
                 voiceSelect.appendChild(opt);
                 readBtn.disabled = true;
                 previewVoiceBtn.disabled = true;
             }
-
 
         } catch (error) {
             console.error("Error populating voices:", error);
@@ -409,17 +427,24 @@
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
-        loadPreferences(); // Load speed and OCR lang first
+        loadPreferences();
         if (typeof speechSynthesis === 'undefined') {
             updateStatus('Speech Synthesis API is not supported. PDF reading is unavailable.', 'error');
             [previewVoiceBtn, speedRange, readBtn, pauseBtn, resumeBtn, stopBtn, voiceSelect, ocrLanguageSelect, clearPdfBtn, pdfFileInput].forEach(el => el.disabled = true);
             return;
         }
+        
+        // Voices can load asynchronously, so try populating a few times.
         populateVoices();
         if (speechSynthesis.onvoiceschanged !== undefined) {
             speechSynthesis.onvoiceschanged = populateVoices;
         }
-        await initializeTesseractWorker(); // Initialize Tesseract on load
+        // Additional attempt if voices are not immediately available
+        setTimeout(populateVoices, 500); 
+        setTimeout(populateVoices, 1500);
+
+
+        await initializeTesseractWorker();
 
         readBtn.disabled = !pdfFileInput.files || !pdfFileInput.files[0];
         clearPdfBtn.disabled = !pdfFileInput.files || !pdfFileInput.files[0];
@@ -431,8 +456,8 @@
         clearPdfBtn.disabled = !hasFile;
         if (hasFile) {
             updateStatus(`File "${pdfFileInput.files[0].name}" selected. Click "Read PDF".`);
-            resetReadingState(false); // Clear previous PDF view if a new file is selected
-            pdfViewContainer.innerHTML = ''; // Clear visual preview immediately
+            resetReadingState(false);
+            pdfViewContainer.innerHTML = '';
         } else {
             updateStatus('No file selected. Select a PDF and click "Read PDF".');
         }
@@ -441,10 +466,11 @@
     ocrLanguageSelect.addEventListener('change', async () => {
         savePreferences();
         await initializeTesseractWorker(); // Re-initialize with new language
+        populateVoices(); // Repopulate to re-prioritize voice groups based on new OCR lang
     });
 
     clearPdfBtn.addEventListener('click', () => {
-        pdfFileInput.value = ''; // Clear the file input
+        pdfFileInput.value = '';
         resetReadingState(true);
         updateStatus('PDF cleared. Select a new PDF file.');
         readBtn.disabled = true;
@@ -457,17 +483,16 @@
         readingQueue = [];
         pageChunkMap = [];
         currentChunkIndex = 0;
-        currentPdf = null;
+        // currentPdf = null; // Keep currentPdf if !fullReset and re-reading same doc? For now, it's cleared on new "Read PDF"
         if (fullReset) {
             pdfViewContainer.innerHTML = '';
+            currentPdf = null;
         }
-        // Reset button states
         pauseBtn.disabled = true;
         resumeBtn.disabled = true;
         stopBtn.disabled = true;
-        // readBtn should be enabled if a file is selected, handled by file input's listener
         readBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
-        removePageHighlight(); // Ensure no lingering highlights
+        removePageHighlight();
     }
 
 
@@ -479,17 +504,19 @@
 
 
     previewVoiceBtn.addEventListener('click', () => {
-      if (!voiceSelect.value || (voiceSelect.selectedOptions.length > 0 && voiceSelect.selectedOptions[0].disabled)) {
+      const selectedOption = voiceSelect.options[voiceSelect.selectedIndex];
+      if (!selectedOption || !selectedOption.value || selectedOption.disabled) {
         updateStatus('Please select an available voice first.', 'error');
         return;
       }
       speechSynthesis.cancel();
       try {
         const preview = new SpeechSynthesisUtterance('This is a preview of the selected voice at the current speed.');
-        preview.voice = voices.find(v => v.name === voiceSelect.value);
+        preview.voice = voices.find(v => v.name === selectedOption.value); // Find by name
         if (!preview.voice) {
-            updateStatus('Selected voice not found. Try another.', 'error'); return;
+            updateStatus('Selected voice not found during preview. Try another.', 'error'); return;
         }
+        preview.lang = preview.voice.lang; // Use the voice's specific language tag
         preview.rate  = parseFloat(speedRange.value);
         preview.onerror = (event) => {
             console.error('SpeechSynthesisUtterance error:', event.error);
@@ -507,20 +534,22 @@
       if (!file) {
         updateStatus('🚫 Please select a PDF first.', 'error'); return;
       }
-      if (!voiceSelect.value || (voiceSelect.selectedOptions.length > 0 && voiceSelect.selectedOptions[0].disabled)) {
+      const selectedVoiceOption = voiceSelect.options[voiceSelect.selectedIndex];
+      if (!selectedVoiceOption || !selectedVoiceOption.value || selectedVoiceOption.disabled) {
         updateStatus('🚫 Please select an available voice.', 'error'); return;
       }
       if (!tesseractWorker) {
         updateStatus('🚫 OCR engine not initialized. Please wait or refresh.', 'error');
-        await initializeTesseractWorker(); // Attempt to re-initialize
-        if (!tesseractWorker) return; // Still failed
+        await initializeTesseractWorker();
+        if (!tesseractWorker) return;
       }
 
-      resetReadingState(false); // Soft reset, keep file selection but clear queue/state
-      pdfViewContainer.innerHTML = ''; // Clear previous PDF view for the new processing pass
+      resetReadingState(false);
+      pdfViewContainer.innerHTML = '';
+      currentPdf = null; // Ensure PDF is reloaded fully
 
       readBtn.disabled   = true;
-      clearPdfBtn.disabled = true; // Disable while processing
+      clearPdfBtn.disabled = true;
 
       updateStatus('Loading PDF…', 'processing');
 
@@ -533,10 +562,10 @@
 
         for (let i = 1; i <= numPages; i++) {
           const page = await currentPdf.getPage(i);
-          const viewport = page.getViewport({ scale: 1.5 }); // Consider making scale configurable or adaptive
+          const viewport = page.getViewport({ scale: 1.5 });
           const pageCanvas = document.createElement('canvas');
           pageCanvas.id = `pdfPageCanvas-${i}`;
-          const pageCtx = pageCanvas.getContext('2d', { willReadFrequently: true }); // For performance
+          const pageCtx = pageCanvas.getContext('2d', { willReadFrequently: true });
           pdfViewContainer.appendChild(pageCanvas);
 
           pageCanvas.width = viewport.width;
@@ -545,25 +574,23 @@
 
           if (i === 1) pageCanvas.scrollIntoView({ behavior: 'auto', block: 'start' });
 
-
           await page.render({ canvasContext: pageCtx, viewport: viewport }).promise;
           updateStatus(`OCRing page ${i} of ${numPages}…`, 'processing');
-          pageCanvas.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); // Scroll current processing page into view
+          if(pageCanvas.scrollIntoViewIfNeeded) pageCanvas.scrollIntoViewIfNeeded({ behavior: 'smooth', block: 'nearest' });
+          else pageCanvas.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
 
           const { data: { text } } = await tesseractWorker.recognize(pageCanvas);
-          const chunks = text.match(new RegExp(`(.|[\\r\\n]){1,250}(?=\\s|$)`, 'g')); // Chunks around 250 chars
+          const chunks = text.match(new RegExp(`(.|[\\r\\n]){1,250}(?=\\s|$)`, 'g'));
           if (chunks) {
             chunks.forEach(chunk => {
               if (chunk.trim().length >= MIN_CHUNK_LENGTH) {
                 readingQueue.push(chunk.trim());
-                pageChunkMap.push(i); // Store page number for this chunk
+                pageChunkMap.push(i);
               }
             });
           }
-          console.log(`Page ${i} OCRed. Total queue: ${readingQueue.length}`);
         }
-        // Worker termination is handled on language change or page unload now.
 
         if (!readingQueue.length) {
           updateStatus('⚠️ No text detected or extracted from the PDF.', 'error');
@@ -576,13 +603,13 @@
         isReading = true;
         pauseBtn.disabled = false;
         stopBtn.disabled  = false;
-        resumeBtn.disabled= true; // Can't resume if not paused
+        resumeBtn.disabled= true;
         speakNextChunk();
 
       } catch (error) {
         console.error("Error during PDF processing or OCR:", error);
         updateStatus(`🚫 Error: ${error.message}. Try again or check console.`, 'error');
-        resetReadingState(false); // Reset but keep file selection
+        resetReadingState(false);
         readBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
         clearPdfBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
       }
@@ -593,7 +620,8 @@
         const pageCanvas = document.getElementById(`pdfPageCanvas-${pageNumber}`);
         if (pageCanvas) {
             pageCanvas.classList.add('currentPageHighlight');
-            pageCanvas.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            if(pageCanvas.scrollIntoViewIfNeeded) pageCanvas.scrollIntoViewIfNeeded({ behavior: 'smooth', block: 'nearest' });
+            else pageCanvas.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
     }
 
@@ -605,40 +633,45 @@
     }
 
     function speakNextChunk() {
-      removePageHighlight(); // Remove previous highlight before speaking next
+      removePageHighlight();
 
       if (!isReading || currentChunkIndex >= readingQueue.length) {
         updateStatus(readingQueue.length > 0 ? '✅ Finished reading PDF.' : 'No text was queued.', 'success');
-        resetReadingState(false); // Reset state but keep PDF view and file
+        resetReadingState(false);
         readBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
         clearPdfBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
         return;
       }
 
       let textToSpeak = readingQueue[currentChunkIndex];
-      // Skip empty or very short chunks more robustly
-      while (textToSpeak.trim().length < MIN_CHUNK_LENGTH && currentChunkIndex < readingQueue.length -1) {
+      while (textToSpeak && textToSpeak.trim().length < MIN_CHUNK_LENGTH && currentChunkIndex < readingQueue.length -1) {
           currentChunkIndex++;
           textToSpeak = readingQueue[currentChunkIndex];
       }
-       if (textToSpeak.trim().length < MIN_CHUNK_LENGTH && currentChunkIndex >= readingQueue.length -1) { // Reached end with bad chunks
-           speakNextChunk(); // Will trigger finish condition
+       if (!textToSpeak || (textToSpeak.trim().length < MIN_CHUNK_LENGTH && currentChunkIndex >= readingQueue.length -1)) {
+           speakNextChunk(); 
            return;
        }
-
 
       const currentPageNumber = pageChunkMap[currentChunkIndex];
       highlightCurrentPage(currentPageNumber);
 
       const utterance = new SpeechSynthesisUtterance(textToSpeak);
-      const selectedVoiceName = voiceSelect.value;
-      utterance.voice = voices.find(v => v.name === selectedVoiceName);
-      if (!utterance.voice && voices.length > 0) { // If selected voice somehow invalid, try first available
-        console.warn(`Voice "${selectedVoiceName}" not found, using default or first available.`);
-        utterance.voice = voices.find(v => v.lang.startsWith('en-')) || voices[0];
+      const selectedVoiceOption = voiceSelect.options[voiceSelect.selectedIndex];
+      
+      if (selectedVoiceOption && selectedVoiceOption.value) {
+          utterance.voice = voices.find(v => v.name === selectedVoiceOption.value);
       }
-      utterance.rate  = parseFloat(speedRange.value);
+
+      if (!utterance.voice && voices.length > 0) {
+        console.warn(`Selected voice "${selectedVoiceOption ? selectedVoiceOption.value : 'unknown'}" not fully matched or found, trying a default.`);
+        // Try finding a voice matching the OCR language first
+        const ocrLangPrefix = ocrLanguageSelect.value.substring(0,2).toLowerCase();
+        utterance.voice = voices.find(v => v.lang.startsWith(ocrLangPrefix)) || voices.find(v => v.lang.startsWith('en')) || voices[0];
+      }
+      
       utterance.lang = utterance.voice ? utterance.voice.lang : (ocrLanguageSelect.value === 'eng' ? 'en-US' : ocrLanguageSelect.value);
+      utterance.rate  = parseFloat(speedRange.value);
 
 
       utterance.onstart = () => {
@@ -647,11 +680,11 @@
 
       utterance.onend = () => {
         currentChunkIndex++;
-        if (isReading) { // Proceed only if not stopped
+        if (isReading) {
             speakNextChunk();
-        } else { // Was stopped
+        } else {
             updateStatus('Reading stopped.', 'info');
-            resetReadingState(false); // Reset playback controls
+            resetReadingState(false);
             readBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
             clearPdfBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
         }
@@ -669,7 +702,6 @@
     pauseBtn.addEventListener('click', () => {
       if (speechSynthesis.speaking && !speechSynthesis.paused) {
         speechSynthesis.pause();
-        // isReading remains true, but speech is paused.
         updateStatus('⏸ Paused.', 'processing');
         pauseBtn.disabled = true;
         resumeBtn.disabled= false;
@@ -681,31 +713,28 @@
       if (speechSynthesis.paused) {
         speechSynthesis.resume();
         updateStatus('▶ Resuming…', 'processing');
-        // Highlight will be re-applied by speakNextChunk's onstart or if utterance continues
-        const currentPageNumber = pageChunkMap[currentChunkIndex];
-        highlightCurrentPage(currentPageNumber);
+        const currentPageNumber = pageChunkMap[currentChunkIndex]; // Re-highlight on resume
+        if (currentPageNumber) highlightCurrentPage(currentPageNumber);
         pauseBtn.disabled = false;
         resumeBtn.disabled= true;
       }
     });
 
     stopBtn.addEventListener('click', () => {
-      isReading = false; // Critical: set this before cancel to prevent onend recursion
+      isReading = false;
       speechSynthesis.cancel();
       updateStatus('■ Stopped by user.', 'info');
-      resetReadingState(false); // Reset controls, keep file & view
+      resetReadingState(false);
       readBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
       clearPdfBtn.disabled = !(pdfFileInput.files && pdfFileInput.files.length > 0);
     });
 
-    // Clean up Tesseract worker when the page is about to be unloaded
     window.addEventListener('beforeunload', async () => {
         if (tesseractWorker) {
             console.log('Terminating Tesseract worker before page unload.');
             await tesseractWorker.terminate();
             tesseractWorker = null;
         }
-        // Stop any speech
         speechSynthesis.cancel();
     });
 
